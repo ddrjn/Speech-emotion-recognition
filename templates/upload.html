@@ -1,0 +1,291 @@
+<!doctype html>
+<html>
+<head>
+  <title>Analysis of speach</title>
+</head>
+<body>
+    <p data_valence = {{ data_valence }} data_arousal = {{ data_arousal }} data_dominance = {{ data_dominance }} data_time={{ data_time }} id="info_p"></p>
+    <div id = "canvas_container" style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <h1>Speech Analysis</h1>
+        <canvas id="myChart" width="100vw" height="800"></canvas>
+
+    </div>
+
+
+  <script>
+    let currentPoint = null;
+    const label_conversion = {'0': 'Neutral',
+                            '1': 'Calm',
+                            '2': 'Happy',
+                            '3': 'Sad',
+                            '4': 'Angry',
+                            '5': 'Anxiety',
+                            '6': 'Disgust',
+                            '7': 'Surprised'};
+
+    const emotion_to_vad_generated = {
+        "0" : [0.883, 0.17, 0.304],
+"1" : [0.744, 0.085, 0.191],
+"2" : [0.987, 0.529, 0.596],
+"3" : [0.736, 0.305, 0.401],
+"4" : [0.235, 0.863, 0.918],
+"5" : [0.431, 0.607, 0.415],
+"6" : [0.397, 0.386, 0.493],
+"7" : [0.709, 0.623, 0.683],
+    };
+
+
+    const p = document.getElementById('info_p');
+    const valenceString = p.getAttribute('data_valence');
+    const arousalString = p.getAttribute('data_arousal');
+    const dominanceString = p.getAttribute('data_dominance');
+    const timeString = p.getAttribute('data_time');
+    const time = parseFloat(timeString);
+    const valence = valenceString.split(',').map(Number);
+    const arousal = arousalString.split(',').map(Number);
+    const dominance = dominanceString.split(',').map(Number);
+    console.log(valence);
+    console.log(arousal);
+    console.log(dominance);
+
+    const canvasElement = getCanvas();
+    const ctx = canvasElement.getContext('2d');
+    // draw lines at 0, 0
+    const canvasWidth = canvasElement.width;
+    const graphsHeight = canvasElement.height / 2;
+    const doneSubscriptions = {};
+    function doDraw() {
+        ctx.clearRect(0, 0, canvasWidth, canvasElement.height);
+        const names = ['Valence', 'Arousal', 'Dominance'];
+        [valence, arousal, dominance].forEach((data, index) => {
+            ctx.beginPath();
+            // draw text in the center of each 3 sections
+            ctx.font = '20px serif';
+            ctx.textAlign = 'center';
+            // black color
+            ctx.fillStyle = '#000000';
+            ctx.strokeStyle = '#000000';
+            const sectionWidth = canvasWidth / 3;
+            const leftShift = sectionWidth * index;
+            const margin = 20;
+            ctx.fillText(names[index], leftShift + sectionWidth / 2, margin);
+            // draw lines
+            ctx.moveTo(leftShift + sectionWidth / 8, margin);
+            ctx.lineTo(leftShift + sectionWidth / 8, graphsHeight - margin);
+            ctx.moveTo(leftShift + margin, graphsHeight - margin - sectionWidth / 8);
+            ctx.lineTo(leftShift + sectionWidth - margin, graphsHeight - margin - sectionWidth / 8);
+            //add 0 points
+            ctx.fillText('0', leftShift + sectionWidth / 8 + margin/2, graphsHeight - sectionWidth / 8);
+            // add axis names
+            ctx.fillText('Time', leftShift + sectionWidth / 2, graphsHeight - sectionWidth / 8);
+            // add vertical label for each axes
+            ctx.save();
+            ctx.translate(leftShift + sectionWidth / 8, graphsHeight / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText(names[index], 0, -margin/2);
+            ctx.restore();
+
+            // add 1 points on vertical lines
+            ctx.fillText('1', leftShift + sectionWidth / 8 - margin/2, margin + sectionWidth / 8 + margin/4);
+            const onePointHeight = margin + sectionWidth / 8;
+            const zeroPointHeight = graphsHeight - margin - sectionWidth / 8;
+            const zeroPointLeft = leftShift + sectionWidth / 8;
+            const maxHorizontal = leftShift + sectionWidth / 8 * 6;
+
+            // add last time point
+            ctx.fillText(timeString + 's', maxHorizontal, zeroPointHeight + margin);
+            ctx.moveTo(maxHorizontal, zeroPointHeight - margin/4);
+            ctx.lineTo(maxHorizontal, zeroPointHeight + margin/4);
+
+            ctx.moveTo(leftShift + sectionWidth / 8 - margin/4, onePointHeight);
+            ctx.lineTo(leftShift + sectionWidth / 8 + margin/4, onePointHeight);
+            ctx.moveTo(zeroPointLeft, zeroPointHeight);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.strokeStyle = '#0000F4';
+            timePointIncrement = (maxHorizontal - zeroPointLeft) / (data.length);
+            for (let i = 0; i < data.length; i++) {
+                const x = zeroPointLeft + timePointIncrement * i;
+                const y = zeroPointHeight - data[i] * (zeroPointHeight - onePointHeight);
+                ctx.lineTo(x, y);
+                ctx.moveTo(x, y);
+            }
+            ctx.stroke();
+
+            if (!doneSubscriptions[names[index]]) {
+                doneSubscriptions[names[index]] = true;
+                canvasElement.addEventListener('mousemove', e => {
+                  const y = e.offsetY;
+                  const x = e.offsetX;
+                  if (x > maxHorizontal || x < zeroPointLeft || y > zeroPointHeight || y < onePointHeight) {
+                    return;
+                  }
+                  const pointIndex = Math.floor((x - zeroPointLeft) / timePointIncrement);
+                  if (pointIndex >= 0 && pointIndex < valence.length)
+                    currentPoint = [valence[pointIndex], arousal[pointIndex], dominance[pointIndex]];
+                  doDraw();
+                  for (let i = 0; i < 5; i++) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.moveTo(x - (i - 2) * sectionWidth, zeroPointHeight + margin);
+                    ctx.lineTo(x - (i - 2) * sectionWidth, onePointHeight);
+                    const timePoint = (x - zeroPointLeft) / (maxHorizontal - zeroPointLeft) * time;
+                    const timePointString = Math.floor(timePoint).toFixed(0) + 's';
+                    ctx.fillText(timePointString, x - (i - 2) * sectionWidth + margin/2, zeroPointHeight + margin*2);
+                    ctx.stroke();
+                  }  
+                });
+            }
+
+
+        });
+        ctx.stroke();
+        function drawEmotionGraph() {
+            
+            ctx.beginPath();
+            ctx.font = '12px serif';
+            ctx.textAlign = 'center';
+            // black color
+            ctx.fillStyle = '#000000';
+            ctx.strokeStyle = '#000000';
+            const sectionWidth = canvasWidth / 3;
+            const leftShift = sectionWidth * 0;
+            const margin = 20;
+            ctx.fillText('Emotions', leftShift + sectionWidth / 2, margin + graphsHeight);
+                // draw lines
+            ctx.moveTo(leftShift + sectionWidth / 8, margin+ graphsHeight);
+            ctx.lineTo(leftShift + sectionWidth / 8, graphsHeight - margin + graphsHeight);
+            ctx.moveTo(leftShift + margin, graphsHeight - margin - sectionWidth / 8 + graphsHeight);
+            ctx.lineTo(leftShift + sectionWidth - margin, graphsHeight - margin - sectionWidth / 8 + graphsHeight);
+
+            ctx.fillText('0', leftShift + sectionWidth / 8 + margin/2, graphsHeight - sectionWidth / 8 + graphsHeight);
+                // add axis names
+            ctx.fillText('Valence', leftShift + sectionWidth / 2, graphsHeight - sectionWidth / 8 + graphsHeight);
+            // add vertical label for each axes
+            ctx.save();
+            ctx.translate(leftShift + sectionWidth / 8, graphsHeight / 2 + graphsHeight);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Arousal', 0, -margin/2);
+            ctx.restore();
+            ctx.stroke();
+            const onePointHeight = margin + sectionWidth / 8 + graphsHeight;
+            const zeroPointHeight = graphsHeight - margin - sectionWidth / 8 + graphsHeight;
+            const zeroPointLeft = leftShift + sectionWidth / 8;
+            const maxHorizontal = leftShift + sectionWidth / 8 * 6;
+
+            const averageValence = valence.reduce((a, b) => a + b, 0) / valence.length;
+            const averageArousal = arousal.reduce((a, b) => a + b, 0) / arousal.length;
+            const averageDominance = dominance.reduce((a, b) => a + b, 0) / dominance.length;
+            const averagePoint = [averageValence, averageArousal, averageDominance];
+            const closness = {};
+            Object.keys(emotion_to_vad_generated).forEach(key => {
+                const emo_location = emotion_to_vad_generated[key];
+                const valence = emo_location[0];
+                const arousal = emo_location[1];
+                const dominance = emo_location[2];
+                const distance = Math.sqrt(Math.pow(valence - averageValence, 2) + Math.pow(arousal - averageArousal, 2) + Math.pow(dominance - averageDominance, 2));
+                closness[label_conversion[key]] = 1/(distance > 0 ? distance : 0.00001);
+            });
+
+            const sum = Object.values(closness).reduce((a, b) => a + b, 0);
+            ctx.beginPath();
+            ctx.strokeStyle = '#000000';
+            ctx.fillStyle = '#0000F4';
+            ctx.font = '20px serif';
+            // add average text
+            ctx.fillText('Average', sectionWidth + sectionWidth / 3, graphsHeight + graphsHeight/8);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.strokeStyle = '#000000';
+            ctx.fillStyle = '#000000';
+            ctx.font = '15px serif';
+            
+            const sortedCloseness = Object.keys(closness).sort((a, b) => closness[b] - closness[a]);
+
+            sortedCloseness.forEach((key, emoIndex) => {
+                closness[key] = closness[key] / sum * 100;
+                ctx.fillText(`${key}: ${closness[key].toFixed(2)}%`, sectionWidth + sectionWidth / 3, graphsHeight + graphsHeight/8 + (emoIndex + 1) * 25);
+            });
+            ctx.stroke();
+            ctx.fill();
+
+            Object.keys(label_conversion).forEach(key => {
+                const emo_name = label_conversion[key];
+                const emo_location = emotion_to_vad_generated[key];
+                const valence = emo_location[0];
+                const arousal = emo_location[1];
+                const x = zeroPointLeft + valence * (maxHorizontal - zeroPointLeft);
+                const y = zeroPointHeight - arousal * (zeroPointHeight - onePointHeight);
+                ctx.beginPath();
+                ctx.strokeStyle = '#000000';
+                ctx.fillStyle = '#0000F4';
+                ctx.rect(x - 5, y - 5, 10, 10);
+                ctx.fillText(emo_name, x, y - 10);
+                ctx.fill();
+                ctx.stroke();
+            });
+
+            if (currentPoint) {
+                const x = zeroPointLeft + currentPoint[0] * (maxHorizontal - zeroPointLeft);
+                const y = zeroPointHeight - currentPoint[1] * (zeroPointHeight - onePointHeight);
+                ctx.beginPath();
+                ctx.strokeStyle = '#000000';
+                ctx.fillStyle = '#FF0000';
+                // draw circle
+                ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                //ctx.fillText('Current', x, y - 10);
+                ctx.fill();
+                ctx.stroke();
+                const closness = {};
+                Object.keys(emotion_to_vad_generated).forEach(key => {
+                    const emo_location = emotion_to_vad_generated[key];
+                    const valence = emo_location[0];
+                    const arousal = emo_location[1];
+                    const dominance = emo_location[2];
+                    const distance = Math.sqrt(Math.pow(valence - currentPoint[0], 2) + Math.pow(arousal - currentPoint[1], 2) + Math.pow(dominance - currentPoint[2], 2));
+                    closness[label_conversion[key]] = 1/(distance > 0 ? distance : 0.00001);
+                });
+                const sum = Object.values(closness).reduce((a, b) => a + b, 0);
+                ctx.beginPath();
+                ctx.strokeStyle = '#000000';
+                ctx.fillStyle = '#0000F4';
+                ctx.font = '20px serif';
+                // add average text
+                ctx.fillText('Current point', sectionWidth + sectionWidth / 3 * 2, graphsHeight + graphsHeight/8);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.strokeStyle = '#000000';
+                ctx.fillStyle = '#000000';
+                ctx.font = '15px serif';
+                
+                const sortedCloseness = Object.keys(closness).sort((a, b) => closness[b] - closness[a]);
+
+                sortedCloseness.forEach((key, emoIndex) => {
+                    closness[key] = closness[key] / sum * 100;
+                    ctx.fillText(`${key}: ${closness[key].toFixed(2)}%`, sectionWidth + sectionWidth / 3 * 2, graphsHeight + graphsHeight/8 + (emoIndex + 1) * 25);
+                });
+                ctx.stroke();
+                ctx.fill();
+            }
+
+            ctx.stroke();
+
+        }
+        drawEmotionGraph();
+    }
+    doDraw();
+
+
+    /** get canvas element
+     * @return {HTMLCanvasElement} canvas element
+     */
+    function getCanvas() {
+        const c = document.getElementById('myChart');
+        c.setAttribute('width', c.parentElement.clientWidth);
+        return c;
+    }
+
+
+  </script>
+</body>
+</html>

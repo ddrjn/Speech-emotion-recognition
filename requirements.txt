@@ -1,0 +1,11 @@
+pytorch
+transformers
+librosa
+numpy
+scipy
+scikit-learn
+matplotlib
+seaborn
+flask
+speech_recognition
+pydub
